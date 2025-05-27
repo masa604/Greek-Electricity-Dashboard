@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+{% load static %}
+<html>
+<head>
+    <title>Greek Electricity Futures</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .card { 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+            margin-bottom: 20px; 
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-3px);
+        }
+        #priceChart { 
+            width: 100% !important; 
+            height: 400px !important; 
+        }
+        .price-display {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        .change-positive {
+            color: #28a745;
+        }
+        .change-negative {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <!-- Cabeçalho com bandeira, título e logo -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <!-- Grupo da esquerda (bandeira + título) -->
+            <div class="d-flex align-items-center">
+                <div class="me-3">
+                    <img src="{% static 'greece.png' %}" 
+                         alt="Bandeira da Grécia"
+                         style="height: 40px; width: auto; border: 1px solid #dee2e6; border-radius: 4px;">
+                </div>
+                <h1 class="mb-0">Greek Electricity Futures</h1>
+            </div>
+            
+            <!-- Logo à direita -->
+            <img src="{% static 'logo.png' %}" 
+                 alt="SYNERTICS Logo" 
+                 style="height:50px;">
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Market Trends</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="priceChart" height="300"></canvas>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card text-center">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Today's Price</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="price-display" id="currentPrice">-</div>
+                        <p class="text-muted mb-0">EUR/MWh</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card text-center">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Daily Change</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="price-display" id="dailyChange">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/api/futures/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.data.length === 0) {
+                        console.warn('No data available');
+                        return;
+                    }
+                    
+                    // Process latest data point
+                    const latest = data.data[data.data.length - 1];
+                    
+                    // Update price display
+                    document.getElementById('currentPrice').textContent = 
+                        latest.price.toLocaleString('pt-EU', {minimumFractionDigits: 2}) + ' €';
+                    
+                    // Update change display
+                    const changeElement = document.getElementById('dailyChange');
+                    const changeValue = latest.pct_change;
+                    changeElement.textContent = 
+                        `${changeValue > 0 ? '+' : ''}${changeValue.toFixed(2)}%`;
+                    changeElement.className = changeValue >= 0 ? 
+                        'price-display change-positive' : 'price-display change-negative';
+                    
+                    // Create chart with enhanced tooltips
+                    new Chart(
+                        document.getElementById('priceChart'),
+                        {
+                            type: 'line',
+                            data: {
+                                labels: data.data.map(item => item.date),
+                                datasets: [{
+                                    label: 'Price (EUR/MWh)',
+                                    data: data.data.map(item => item.price),
+                                    borderColor: '#2c3e50',
+                                    backgroundColor: 'rgba(44, 62, 80, 0.1)',
+                                    borderWidth: 3,
+                                    tension: 0.2,
+                                    fill: true,
+                                    pointBackgroundColor: '#2c3e50',
+                                    pointRadius: 4,
+                                    pointHoverRadius: 6,
+                                    pointHitRadius: 10
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: {
+                                    intersect: false,
+                                    mode: 'index'
+                                },
+                                plugins: {
+                                    tooltip: {
+                                        enabled: true,
+                                        mode: 'index',
+                                        callbacks: {
+                                            title: function(context) {
+                                                return context[0].label; // Show date
+                                            },
+                                            label: function(context) {
+                                                return `Preço: ${context.parsed.y.toLocaleString('pt-EU', {
+                                                    minimumFractionDigits: 2
+                                                })} €/MWh`;
+                                            },
+                                            afterLabel: function(context) {
+                                                const index = context.dataIndex;
+                                                if (index > 0) {
+                                                    const current = data.data[index].price;
+                                                    const previous = data.data[index-1].price;
+                                                    const change = ((current - previous)/previous)*100;
+                                                    return `Variação: ${change > 0 ? '+' : ''}${change.toFixed(2)}%`;
+                                                }
+                                                return 'Primeiro registro';
+                                            }
+                                        },
+                                        displayColors: false,
+                                        backgroundColor: 'rgba(0,0,0,0.85)',
+                                        titleFont: { size: 14, weight: 'bold' },
+                                        bodyFont: { size: 13 },
+                                        padding: 12,
+                                        cornerRadius: 6
+                                    },
+                                    legend: {
+                                        display: false
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: false,
+                                        grid: {
+                                            drawBorder: false
+                                        },
+                                        ticks: {
+                                            callback: function(value) {
+                                                return value.toLocaleString('pt-EU') + ' €';
+                                            }
+                                        }
+                                    },
+                                    x: {
+                                        grid: {
+                                            display: false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    );
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('currentPrice').textContent = 'Erro';
+                    document.getElementById('dailyChange').textContent = 'N/A';
+                });
+        });
+    </script>
+</body>
+</html>
